@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AI Fitness – Complete</title>
+  <meta name="theme-color" content="#0b1020" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏃‍♂️</text></svg>">
+
+  <style>
+    html,body,#root{height:100%}
+    body{margin:0;background:#0b1020;color:#e8ecff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans KR,Apple SD Gothic Neo,sans-serif}
+    .card{background:#0f1736;border:1px solid #203067;border-radius:16px;padding:16px}
+    .btn{background:#1f2b60;color:#dbe3ff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
+    .btn:active{transform:translateY(1px)}
+    .pill{display:inline-block;background:#16305e;padding:4px 10px;border-radius:999px;margin-right:6px}
+
+    /* ✅ 카메라/오버레이 핵심: 캔버스가 레이아웃을 만들고, 비디오가 절대배치로 깔림 */
+    .camwrap{
+      position:relative;
+      border-radius:12px;
+      overflow:hidden;
+      aspect-ratio: 16 / 9;             /* 높이 보장 */
+      background:#0b1020;
+    }
+    .camwrap video{
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      object-fit:cover;
+      z-index:0;
+    }
+    .camwrap canvas{
+      position:relative;                 /* absolute 아님 */
+      display:block;
+      width:100%; height:auto;           /* 높이 생성 */
+      z-index:1;
+      pointer-events:none;
+    }
+
+    .header {
+      display:flex; align-items:center; gap:8px; padding:10px 12px;
+      position:sticky; top:0; z-index:10; background:#0b1020;
+    }
+    .nav a{color:#b7c4ff; text-decoration:none; margin-right:8px}
+    .nav a.active{color:#fff; font-weight:700}
+    .test-buttons{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px}
+    .test-buttons .btn.small{padding:6px 10px; border-radius:8px; font-size:13px}
+  </style>
+
+  <!-- MediaPipe (순서 중요) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
+
