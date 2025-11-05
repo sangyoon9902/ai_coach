@@ -1,0 +1,18 @@
+{
+  "embedding_model": "text-embedding-3-small",
+  "source": "kspo_videos",
+  "schema": [
+    "title",
+    "fitness_category",
+    "tool",
+    "body_part",
+    "target",
+    "disease",
+    "youtube_id",
+    "youtube_url",
+    "thumb_url",
+    "page_no",
+    "rank_on_page",
+    "text"
+  ]
+}

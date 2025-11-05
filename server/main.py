@@ -6,9 +6,13 @@ from typing import Any, Dict
 from uuid import uuid4
 import json
 
-from .rag.query_engine import generate_prescription_with_query, rag_status as rag_status_fn
+# ✅ 변경된 부분: KSPO 전용 엔진 불러오기
+from .rag.query_engine_kspo_only import (
+    generate_prescription_kspo_only,
+)
+from .rag.query_engine_kspo_only import _get_openai_client  # optional health check
 
-app = FastAPI(title="AI Fitness API", version="0.1.0")
+app = FastAPI(title="AI Fitness API", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,21 +25,15 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup_rag():
     try:
-        status = rag_status_fn()
-        print("✅ RAG 상태:", status)
+        # 간단한 초기화 테스트
+        _ = _get_openai_client()
+        print("✅ OpenAI 클라이언트 로드 완료 (KSPO 전용)")
     except Exception as e:
-        print("⚠️ RAG 상태 확인 실패:", e)
+        print("⚠️ OpenAI 초기화 실패:", e)
 
 @app.get("/health")
 def health():
     return {"ok": True, "service": "ai-fitness", "version": app.version}
-
-@app.get("/rag_status")
-def get_rag_status():
-    try:
-        return {"ok": True, "status": rag_status_fn()}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
 @app.get("/session_summary")
 def session_summary_get():
@@ -55,7 +53,10 @@ async def session_summary(req: Request):
         body: Dict[str, Any] = await req.json()
     except Exception as e:
         print(f"❌ [session_summary] JSON parse error ({trace_id}): {e}")
-        return JSONResponse(status_code=400, content={"trace_id": trace_id, "error": "invalid_json", "detail": str(e)})
+        return JSONResponse(
+            status_code=400,
+            content={"trace_id": trace_id, "error": "invalid_json", "detail": str(e)},
+        )
 
     print(f"🌐 [session_summary] 요청 수신: {trace_id}")
     try:
@@ -64,7 +65,8 @@ async def session_summary(req: Request):
         print(str(body))
 
     try:
-        plan = generate_prescription_with_query(body)
+        # ✅ 변경 포인트: KSPO 전용 추천 함수 사용
+        plan = generate_prescription_kspo_only(body, per_cat=3)
     except Exception as e:
         print(f"⚠️ RAG 생성 오류({trace_id}): {e}")
         raise HTTPException(status_code=500, detail=f"RAG error: {e}")
@@ -72,7 +74,7 @@ async def session_summary(req: Request):
     return {
         "trace_id": trace_id,
         "received": body,
-        **plan,  # planText + evidence 포함
+        **plan,  # planText + recommendations + case_refs 포함
     }
 
 @app.get("/")
@@ -80,7 +82,6 @@ def root():
     return {
         "hello": "AI Fitness API",
         "health": "/health",
-        "rag_status": "/rag_status",
-        "docs": "/docs",
         "post_endpoint": "/session_summary",
+        "version": app.version,
     }

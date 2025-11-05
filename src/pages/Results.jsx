@@ -1,9 +1,12 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom"; // ✅ 추가
 import { useApp } from "../state/AppState";
 import { sendSessionSummary } from "../api/session";
 import { useBuildSessionPayload } from "../api/buildSessionPayload";
 import ReactMarkdown from "react-markdown";
 import ManualEntryPanel from "../components/ManualEntryPanel";
+import PlanCalendar from "../components/PlanCalendar.jsx";
+import PlanCards from "../components/PlanCards.jsx";
 
 // ───────────────────────── helpers ─────────────────────────
 function calcBMI(w, h) {
@@ -66,6 +69,62 @@ function Row({ name, value, unit, score }) {
   );
 }
 
+// ✅ 설문 근거 패널 (기본 문구 + 서버 evidence 병합)
+function EvidencePanel({ session }) {
+  const base = [
+    {
+      title: "설문 1·4 기반 주의사항 (ACSM 근거)",
+      items: [
+        "운동 시 흉통이 발생하므로 저강도로 시작하고, 증상을 지속적으로 모니터링하며 필요시 의료 상담을 권장합니다.",
+        "노쇠 신호가 있어 균형과 기능 중심의 운동을 권장하며, 세트 및 시간 축소, 휴식 연장을 고려합니다.",
+      ],
+    },
+    {
+      title: "설문 2 기반 상담/동기부여 (ACSM 근거)",
+      items: [
+        "체력 측정이 목적이므로 기본기 향상 및 규칙적인 운동을 강조합니다.",
+        "흥미의 부재를 해소하기 위해 게임화 또는 챌린지를 도입하고, 효과의 불확실성을 줄이기 위해 주간 지표(예: RPE, 휴식 심박수)를 시각화합니다.",
+      ],
+    },
+    {
+      title: "설문 3 기반 달성 전략",
+      items: [
+        "활동적인 일정을 고려하여 주 3회의 유산소 운동을 20분씩 나누어 진행하고, 중간중간 30~45분마다 1~2분 기립 및 보행을 포함합니다.",
+        "고강도 운동을 피하고 중강도 운동 및 휴식일을 적절히 배치합니다.",
+      ],
+    },
+  ];
+
+  const merged = useMemo(() => {
+    const fromServer = Array.isArray(session?.evidence?.blocks) ? session.evidence.blocks : [];
+    const map = new Map();
+    [...base, ...fromServer].forEach(b => {
+      const key = (b.title || "").trim();
+      const items = (b.items || []).map(String);
+      if (!map.has(key)) map.set(key, new Set());
+      const set = map.get(key);
+      items.forEach(it => set.add(it));
+    });
+    return [...map.entries()].map(([title, set]) => ({ title, items: [...set] }));
+  }, [session]);
+
+  if (!merged.length) return null;
+
+  return (
+    <section style={styles.panel}>
+      <div style={styles.panelTitle}>📌 검수 참고: 설문 근거</div>
+      {merged.map((b, i) => (
+        <div key={i} style={{ marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{b.title}</div>
+          <ul style={{ margin: 0, paddingLeft: 18, color: "#334155", fontSize: 13 }}>
+            {b.items.map((li, j) => <li key={j} style={{ marginBottom: 4 }}>{li}</li>)}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export default function Results() {
   const { session, setResultFromServer } = useApp();
   const payload = useBuildSessionPayload();
@@ -73,6 +132,10 @@ export default function Results() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef(null);
+
+  // ▼ 캘린더 컨트롤 상태 (4~6주/시작일)
+  const [weeksCal, setWeeksCal] = useState(4);
+  const [startDateCal, setStartDateCal] = useState(null);
 
   const pretty = useMemo(() => JSON.stringify(payload ?? {}, null, 2), [payload]);
 
@@ -112,7 +175,7 @@ export default function Results() {
         signal: abortRef.current.signal,
       });
       if (!planMd) {
-        setErrorMsg("서버 응답에 planText가 없습니다.");
+        setErrorMsg("서버 응답에 planMd가 없습니다.");
       } else {
         setResultFromServer({ traceId: raw?.trace_id || "", planMd });
       }
@@ -123,9 +186,30 @@ export default function Results() {
     }
   }
 
+  // ✅ 언마운트 시 요청 중단
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
+
   function handlePrint() {
     window.print();
   }
+
+  // ✅ planMd / payload 복사
+  async function copyPlanMd() {
+    try {
+      await navigator.clipboard.writeText(session?.planMd || "");
+    } catch {}
+  }
+  async function copyPayload() {
+    try {
+      await navigator.clipboard.writeText(pretty || "");
+    } catch {}
+  }
+
+  const hasPlan = !!session?.planMd;
 
   return (
     <div style={styles.container}>
@@ -142,15 +226,21 @@ export default function Results() {
               AI Fitness • {new Date().toLocaleDateString()}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {session?.readyToSend && (
               <button
                 style={{ ...styles.primaryBtn, opacity: loading ? .6 : 1 }}
                 disabled={loading}
                 onClick={handleSend}
+                title="유사사례/ACSM 근거 기반 처방 생성"
               >
                 {loading ? "처방 생성 중…" : "운동처방 받기"}
               </button>
+            )}
+            {hasPlan && (
+              <Link to="/review" style={styles.ghostBtn} title="검수 페이지로 이동">
+                검수 페이지
+              </Link>
             )}
             <button style={styles.ghostBtn} onClick={handlePrint}>인쇄/PDF</button>
           </div>
@@ -209,12 +299,15 @@ export default function Results() {
               <div style={styles.planDot} />
               <h3 style={{ margin: 0, fontSize: 18 }}>맞춤 운동처방</h3>
             </div>
-            {/* 간단 레전드 */}
-            <div style={{ display: "flex", gap: 16 }}>
+            {/* 간단 레전드 + 복사 버튼 */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span style={styles.legendItem}><i style={{ ...styles.dot, background:"#16a34a"}} /> 우수</span>
               <span style={styles.legendItem}><i style={{ ...styles.dot, background:"#3b82f6"}} /> 보통</span>
               <span style={styles.legendItem}><i style={{ ...styles.dot, background:"#f59e0b"}} /> 주의</span>
               <span style={styles.legendItem}><i style={{ ...styles.dot, background:"#ef4444"}} /> 개선필요</span>
+              {hasPlan && (
+                <button style={styles.ghostBtn} onClick={copyPlanMd} title="생성된 처방 마크다운 복사">처방 복사</button>
+              )}
             </div>
           </div>
 
@@ -226,10 +319,11 @@ export default function Results() {
             </div>
           ) : (
             <div style={styles.planBody}>
-              {session?.planMd ? (
-                <div className="rx-markdown" style={styles.md}>
-                  <ReactMarkdown>{session.planMd}</ReactMarkdown>
-                </div>
+              {hasPlan && typeof PlanCards === "function" ? (
+                <PlanCards planMd={session.planMd} />
+              ) : hasPlan ? (
+                // PlanCards 컴포넌트가 없을 때 fallback
+                <div style={styles.md}><ReactMarkdown>{session.planMd}</ReactMarkdown></div>
               ) : (
                 <div style={{ color: "#64748b", fontSize: 14 }}>
                   아직 처방이 생성되지 않았습니다. 상단의 <b>운동처방 받기</b>를 눌러주세요.
@@ -246,11 +340,66 @@ export default function Results() {
             </div>
           </div>
         </section>
+
+        {/* ✅ 설문 근거 패널 (검수 시 참고용) */}
+        <EvidencePanel session={session} />
+
+        {/* ▼ 처방 기반 주간 캘린더 섹션 */}
+        {hasPlan && (
+          <section style={styles.planPanel}>
+            <div style={styles.planHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={styles.planDot} />
+                <h3 style={{ margin: 0, fontSize: 18 }}>주간 계획표 (캘린더)</h3>
+              </div>
+
+              {/* 주차/시작일 컨트롤 */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  style={{ ...styles.ghostBtn, boxShadow: weeksCal===4 ? "inset 0 0 0 1px #cbd5e1" : "none" }}
+                  onClick={() => setWeeksCal(4)}
+                >4주</button>
+                <button
+                  style={{ ...styles.ghostBtn, boxShadow: weeksCal===6 ? "inset 0 0 0 1px #cbd5e1" : "none" }}
+                  onClick={() => setWeeksCal(6)}
+                >6주</button>
+
+                <input
+                  type="date"
+                  style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 8px" }}
+                  onChange={(e) => {
+                    const v = e.target.value; // yyyy-mm-dd
+                    setStartDateCal(v ? new Date(v + "T09:00:00") : null);
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ padding: 12 }}>
+              {typeof PlanCalendar === "function" ? (
+                <PlanCalendar
+                  planMd={session.planMd}
+                  weeks={weeksCal}
+                  startDate={startDateCal || undefined}
+                />
+              ) : (
+                <div style={{ color: "#64748b", fontSize: 14 }}>
+                  PlanCalendar 컴포넌트를 사용할 수 없습니다.
+                </div>
+              )}
+            </div>
+          </section>
+        )}
       </div>
 
       {/* 필요시 디버그/원본 페이로드 박스 */}
       <div style={styles.debugCard}>
         <h4 style={{ margin: "0 0 8px" }}>기록 요약 (서버로 보낼 내용)</h4>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <button style={styles.ghostBtn} onClick={copyPayload}>payload 복사</button>
+          {hasPlan && <button style={styles.ghostBtn} onClick={copyPlanMd}>planMd 복사</button>}
+          {hasPlan && <Link to="/review" style={styles.ghostBtn}>검수 페이지에서 열기</Link>}
+        </div>
         <pre style={styles.jsonBox}>{pretty}</pre>
       </div>
     </div>
